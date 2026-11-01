@@ -84,3 +84,52 @@ class TestBatchScrapeOrigin:
         res = await async_client.start_batch_scrape(["https://example.com"], origin="async-python-test")
         assert res.id == "job-async-123"
         assert captured_payload.get("origin") == "async-python-test"
+
+    def test_sync_batch_scrape_forwards_origin_to_post(self, client, monkeypatch):
+        from firecrawl.v2.types import BatchScrapeJob
+
+        mock_post_resp = MagicMock()
+        mock_post_resp.ok = True
+        mock_post_resp.json.return_value = {"success": True, "id": "job-sync-456", "url": "https://api.firecrawl.dev/v2/batch/scrape/job-sync-456"}
+
+        captured_payload = {}
+
+        def fake_post(endpoint, json_data, headers=None):
+            captured_payload.update(json_data)
+            return mock_post_resp
+
+        def fake_get_status(c, jid):
+            return BatchScrapeJob(status="completed", completed=1, total=1)
+
+        monkeypatch.setattr(client.http_client, "post", fake_post)
+        import firecrawl.v2.methods.batch as batch_mod
+        monkeypatch.setattr(batch_mod, "get_batch_scrape_status", fake_get_status)
+
+        res = client.batch_scrape(["https://example.com"], origin="python-sync-batch-scrape")
+        assert res.status == "completed"
+        assert captured_payload.get("origin") == "python-sync-batch-scrape"
+
+    @pytest.mark.asyncio
+    async def test_async_batch_scrape_forwards_origin_to_post(self, async_client, monkeypatch):
+        from firecrawl.v2.types import BatchScrapeJob
+
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 200
+        mock_post_resp.json.return_value = {"success": True, "id": "job-async-456", "url": "https://api.firecrawl.dev/v2/batch/scrape/job-async-456"}
+
+        captured_payload = {}
+
+        async def fake_post(endpoint, json_data):
+            captured_payload.update(json_data)
+            return mock_post_resp
+
+        async def fake_get_status(c, jid, pagination_config=None):
+            return BatchScrapeJob(status="completed", completed=1, total=1)
+
+        monkeypatch.setattr(async_client.async_http_client, "post", fake_post)
+        import firecrawl.v2.methods.aio.batch as aio_batch_mod
+        monkeypatch.setattr(aio_batch_mod, "get_batch_scrape_status", fake_get_status)
+
+        res = await async_client.batch_scrape(["https://example.com"], origin="python-async-batch-scrape")
+        assert res.status == "completed"
+        assert captured_payload.get("origin") == "python-async-batch-scrape"
